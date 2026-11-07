@@ -15,6 +15,10 @@
   <img src="https://img.shields.io/badge/AI-Gemini%20free%20tier-4285F4?logo=googlegemini&logoColor=white" alt="Gemini">
 </p>
 
+<p align="center">
+  <img src="docs/screenshot.png" width="340" alt="Lecture Notes menu bar popover">
+</p>
+
 ---
 
 ## How it works
@@ -43,6 +47,10 @@
 ## Install
 
 Requires **macOS 26** or later.
+
+**Download:** grab the `.dmg` from [Releases](https://github.com/NathanYJiang/lecture-notes/releases/latest), open it, and drag **Lecture Notes** into Applications. The app isn't notarized by Apple, so the first time you open it macOS will block it. Go to **System Settings → Privacy & Security** and click **Open Anyway**, or right-click the app and choose **Open**.
+
+**Or build from source:**
 
 ```bash
 git clone https://github.com/NathanYJiang/lecture-notes.git
