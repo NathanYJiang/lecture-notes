@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Foundation
 import ServiceManagement
+import UniformTypeIdentifiers
 
 enum Phase: Equatable {
     case idle, preparing, recording, finishing, transcribing, summarizing, uploading
@@ -29,6 +30,12 @@ struct LectureMeta: Codable, Equatable {
     var title: String?
     var duration: TimeInterval?
     var docURL: String?
+}
+
+struct SlideDeck: Equatable, Identifiable {
+    let name: String
+    let text: String
+    var id: String { name }
 }
 
 struct LectureRecord: Identifiable, Equatable {
@@ -101,9 +108,14 @@ final class AppState: ObservableObject {
     }
     @Published var elapsed: TimeInterval = 0
     @Published var lectureTitle = ""
-    @Published var context = "" {
-        didSet { scheduleTermsUpdate() }
+    @Published var slides: [SlideDeck] = [] {
+        didSet {
+            slideTerms = Self.slideTerms(from: slidesText)
+            scheduleTermsUpdate()
+        }
     }
+    @Published var slidesError: String?
+    private var slideTerms: [String] = []
     @Published var tab: Tab = .record
     @Published var showSettings = false
     @Published var settingsTab: SettingsTab = .audio
@@ -140,9 +152,82 @@ final class AppState: ObservableObject {
 
     var isRecording: Bool { phase == .recording }
 
-    /// Comma/newline-separated hints like "merge sort, divide and conquer" become speech-recognition vocabulary.
-    var terms: [String] { Self.terms(from: context) }
+    /// Jargon and titles from the attached slides become speech-recognition vocabulary.
+    var terms: [String] { slideTerms }
 
+    var slidesText: String { slides.map(\.text).joined(separator: "\n\n") }
+
+    static func slideTerms(from text: String) -> [String] {
+        text.isEmpty ? [] : Slides.terms(from: text)
+    }
+
+    /// Terms typed in older versions go first, so they survive if the recognizer caps how many it uses.
+    static func merge(_ typed: [String], _ fromSlides: [String]) -> [String] {
+        var seen = Set<String>()
+        return (typed + fromSlides).filter { seen.insert($0.lowercased()).inserted }
+    }
+
+    func addSlides(_ urls: [URL]) {
+        let supported = urls.filter { Slides.fileTypes.contains($0.pathExtension.lowercased()) }
+        guard !supported.isEmpty else {
+            slidesError = "That isn't a slide file. Use a PDF or PowerPoint."
+            return
+        }
+        let (decks, error) = Self.read(supported, skipping: slides.map(\.name))
+        slides += decks
+        slidesError = error
+    }
+
+    private static func read(_ urls: [URL], skipping names: [String] = []) -> ([SlideDeck], String?) {
+        var decks: [SlideDeck] = []
+        var lastError: String?
+        for url in urls where Slides.fileTypes.contains(url.pathExtension.lowercased()) {
+            let name = url.lastPathComponent
+            guard !names.contains(name), !decks.contains(where: { $0.name == name }) else { continue }
+            do {
+                decks.append(SlideDeck(name: name, text: try Slides.text(from: url)))
+            } catch {
+                lastError = error.localizedDescription
+            }
+        }
+        return (decks, lastError)
+    }
+
+    func removeSlides(_ deck: SlideDeck) {
+        slides.removeAll { $0 == deck }
+    }
+
+    /// The popover closes while the panel is up; attached slides stay in state for when it reopens.
+    func chooseSlides() {
+        addSlides(Self.pickSlideFiles())
+    }
+
+    private static func pickSlideFiles() -> [URL] {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = Slides.fileTypes.compactMap { UTType(filenameExtension: $0) }
+        panel.message = "Choose the lecture slides"
+        NSApp.activate()
+        return panel.runModal() == .OK ? panel.urls : []
+    }
+
+    /// Fixes a past lecture: attach its slides, then re-transcribe and re-write the notes with them.
+    func addSlidesAndRetranscribe(_ record: LectureRecord) {
+        guard !isRecording, !phase.isBusy else { return }
+        let (decks, error) = Self.read(Self.pickSlideFiles())
+        guard !decks.isEmpty else {
+            if let error {
+                tab = .record
+                slidesError = error
+            }
+            return
+        }
+        let text = decks.map(\.text).joined(separator: "\n\n")
+        try? text.write(to: record.dir.appending(path: "slides.txt"), atomically: true, encoding: .utf8)
+        regenerate(record, retranscribe: true)
+    }
+
+    /// Key terms typed into older versions of the app (saved as context.txt).
     static func terms(from context: String) -> [String] {
         context.components(separatedBy: CharacterSet(charactersIn: ",;\n"))
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -184,6 +269,7 @@ final class AppState: ObservableObject {
         let dir = Self.rootDir.appending(path: Self.folderFormat.string(from: Date()))
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         sessionDir = dir
+        if !slides.isEmpty { try? slidesText.write(to: dir.appending(path: "slides.txt"), atomically: true, encoding: .utf8) }
         audioURL = nil
         live.reset()
         meter.reset()
@@ -338,7 +424,7 @@ final class AppState: ObservableObject {
     }
 
     /// Re-runs a past lecture. With `retranscribe`, the audio is transcribed again
-    /// using the current "Topic & key terms", so the hints apply after the fact.
+    /// using the lecture's saved slides.
     func regenerate(_ record: LectureRecord, retranscribe: Bool) {
         guard !isRecording, !phase.isBusy else { return }
         let fm = FileManager.default
@@ -380,8 +466,11 @@ final class AppState: ObservableObject {
         let prefs = Prefs.shared
         let regenerating = isRegenerating
         let savedContext = (try? String(contentsOf: dir.appending(path: "context.txt"), encoding: .utf8)) ?? ""
-        let hints = (regenerating && context.isEmpty ? savedContext : context).trimmingCharacters(in: .whitespacesAndNewlines)
-        let hintTerms = regenerating && context.isEmpty ? Self.terms(from: savedContext) : terms
+        let hints = savedContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let savedSlides = (try? String(contentsOf: dir.appending(path: "slides.txt"), encoding: .utf8)) ?? ""
+        // A fresh recording uses whatever is attached now (slides can change mid-lecture); a past one uses what it saved.
+        let slideText = regenerating ? savedSlides : slidesText
+        let hintTerms = Self.merge(Self.terms(from: savedContext), regenerating ? Self.slideTerms(from: slideText) : slideTerms)
         do {
             let transcriptURL = dir.appending(path: "transcript.txt")
             let transcript: String
@@ -402,8 +491,12 @@ final class AppState: ObservableObject {
                                    baseURL: baseURL.isEmpty ? prefs.provider.defaultBaseURL : baseURL,
                                    apiKey: prefs.apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
                                    stylePrompt: prefs.stylePrompt)
-            if !hints.isEmpty { try? hints.write(to: dir.appending(path: "context.txt"), atomically: true, encoding: .utf8) }
-            let notes = try await Summarizer.summarize(transcript, context: hints, config: config)
+            if slideText.isEmpty {
+                try? FileManager.default.removeItem(at: dir.appending(path: "slides.txt"))
+            } else {
+                try? slideText.write(to: dir.appending(path: "slides.txt"), atomically: true, encoding: .utf8)
+            }
+            let notes = try await Summarizer.summarize(transcript, context: hints, slides: slideText, config: config)
             guard !Task.isCancelled else { return }
             try notes.write(to: dir.appending(path: "notes.md"), atomically: true, encoding: .utf8)
             let title = docTitle(notes: notes, dir: dir, regenerating: regenerating)
@@ -427,7 +520,7 @@ final class AppState: ObservableObject {
             phase = .done(docURL)
             if !regenerating {
                 lectureTitle = ""
-                context = ""
+                slides = []
             }
             loadHistory()
             if prefs.openDocWhenDone {

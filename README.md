@@ -36,7 +36,7 @@
 
 - **Lives in the menu bar.** No Dock icon and no windows. Click, record, done.
 - **Private, on-device transcription** with a live transcript as the lecture happens.
-- **Key terms.** Type hints like `merge sort, divide and conquer` and the recognizer listens for them. The AI also uses them to fix words the recognizer mishears. They work retroactively too: re-transcribe old lectures with new terms.
+- **Slides for accuracy.** Drop in the lecture's PDF or PowerPoint, no typing needed. The recognizer learns the slides' jargon and titles, and the AI uses the slides to spell terms right and fill in what "this diagram" meant. Works retroactively too: right-click an old lecture → **Add slides & re-transcribe**.
 - **Free by default.** Uses Google's free Gemini tier. You can also bring your own key for Claude, OpenAI, OpenRouter or DeepSeek, run it locally with Ollama, or point it at any OpenAI-compatible endpoint.
 - **Resilient.** It retries when the AI is overloaded and falls back to other free Gemini models if one is retired. Recordings and transcripts are saved before the AI step, so nothing is lost. If something fails, hit **Retry**.
 - **Your style.** The note-taking prompt is editable. The default is minimal: a statement, then bullets with ***bold and italic*** key ideas.
@@ -102,7 +102,7 @@ The app only asks for `drive.file`, so it can only see files and folders it crea
 ## Privacy
 
 - Audio and transcription stay on your Mac.
-- Only the transcript text, and any key terms you typed, is sent to the AI provider you choose.
+- Only the transcript text, and the text of any slides you attach, is sent to the AI provider you choose.
 - API keys are stored in the macOS Keychain.
 - Everything is saved locally under `~/Library/Application Support/LectureNotes/Recordings/`.
 

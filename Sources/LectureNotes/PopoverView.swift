@@ -100,12 +100,7 @@ struct RecordPane: View {
                         .textFieldStyle(.plain)
                 }
                 CardDivider()
-                inputRow(icon: "text.bubble") {
-                    TextField("Topic & key terms, e.g. merge sort, recursion", text: $state.context, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .lineLimit(1...4)
-                }
-                .help("Helps the transcriber hear these words and tells the AI what to focus on. Editable while recording.")
+                slidesRow
 
                 CardDivider()
                 Row(icon: "waveform", tint: .orange, title: "Audio", subtitle: prefs.audioSource.label) {
@@ -175,6 +170,36 @@ struct RecordPane: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
+    }
+
+    private var slidesRow: some View {
+        inputRow(icon: "rectangle.on.rectangle") {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(state.slides) { deck in
+                    HStack(spacing: 6) {
+                        Text(deck.name).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 4)
+                        Button { state.removeSlides(deck) } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("Remove")
+                    }
+                }
+                Button(state.slides.isEmpty ? "Add lecture slides for better accuracy" : "Add more…") { state.chooseSlides() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Brand.indigo)
+                if let error = state.slidesError {
+                    Text(error).font(.system(size: 11)).foregroundStyle(.red)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .contentShape(Rectangle())
+        .dropDestination(for: URL.self) { urls, _ in
+            state.addSlides(urls)
+            return true
+        }
+        .help("Click or drag a PDF here. The transcriber learns the slides' terms, and the AI uses them to get the notes right.")
     }
 
     @ViewBuilder private var saveToRow: some View {
@@ -547,7 +572,7 @@ struct HistoryRow: View {
             }
             Divider()
             Button(record.hasNotes ? "Make notes again" : "Make notes") { state.regenerate(record, retranscribe: false) }
-            Button("Re-transcribe with current key terms") { state.regenerate(record, retranscribe: true) }
+            Button("Add slides & re-transcribe…") { state.addSlidesAndRetranscribe(record) }
             Divider()
             Button("Show in Finder") { state.showFiles(record.dir) }
         }

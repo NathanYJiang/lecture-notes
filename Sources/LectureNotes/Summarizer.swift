@@ -46,12 +46,15 @@ enum Summarizer {
         return URLSession(configuration: config)
     }()
 
-    static func summarize(_ transcript: String, context: String = "", config: LLMConfig) async throws -> String {
+    static func summarize(_ transcript: String, context: String = "", slides: String = "", config: LLMConfig) async throws -> String {
         if config.provider.needsKey && config.apiKey.isEmpty { throw SummarizerError.missingKey }
         let system = config.stylePrompt + "\n\nRespond with only the Markdown notes. Write math as plain text with Unicode symbols (Θ(log n), n², ≤, ∑), never LaTeX or $...$, because the notes get pasted into apps that don't render it."
         var user = ""
         if !context.isEmpty {
             user += "Context from the student (topic, key terms, things to focus on). Speech recognition often mangles these terms, so use this to correct them:\n<context>\n\(context)\n</context>\n\n"
+        }
+        if !slides.isEmpty {
+            user += "The lecture's slides. Use them to spell terms, names, and formulas correctly, fill in what the speaker referred to (\"this diagram\", \"as you can see\"), and follow the lecture's structure. The notes are about what was said, so don't copy slides that weren't covered:\n<slides>\n\(Slides.forPrompt(slides))\n</slides>\n\n"
         }
         user += "Lecture transcript:\n<transcript>\n\(transcript)\n</transcript>"
 

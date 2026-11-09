@@ -41,7 +41,8 @@ enum Snapshot {
             }
         }
         render("record") { state.phase = .recording }
-        render("done") { state.phase = .done(nil); state.meter.reset(); state.elapsed = 0 }
+        render("slides") { state.phase = .idle; state.slides = [SlideDeck(name: "CS180 Lecture 7 - Shortest Paths.pdf", text: "--- Slide 1 ---\nDijkstra's Algorithm")] }
+        render("done") { state.slides = []; state.phase = .done(nil); state.meter.reset(); state.elapsed = 0 }
         render("failed") { state.phase = .failed(SummarizerError.http(503, "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.").localizedDescription) }
         render("failed-raw") { state.phase = .failed(SummarizerError.http(400, "This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements. We recommend you to use the Interactions API (https://aistudio.google.com/docs/get-started).").localizedDescription) }
         render("transcript") { state.tab = .transcript }
