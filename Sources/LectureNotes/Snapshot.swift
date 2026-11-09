@@ -47,8 +47,20 @@ enum Snapshot {
         render("failed-raw") { state.phase = .failed(SummarizerError.http(400, "This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements. We recommend you to use the Interactions API (https://aistudio.google.com/docs/get-started).").localizedDescription) }
         render("transcript") { state.tab = .transcript }
         render("history") { state.tab = .history; state.loadHistory() }
+        render("lecture") { state.openLecture = state.history.first(where: \.hasNotes)?.dir }
+        render("lecture-transcript") { state.openLecture = state.history.first?.dir }
         render("quit") { state.showSettings = false; state.phase = .recording; state.confirmingQuit = true }
         render("settings") { state.confirmingQuit = false; state.showSettings = true }
+        if let dir = state.history.first(where: \.hasNotes)?.dir,
+           let notes = try? String(contentsOf: dir.appending(path: "notes.md"), encoding: .utf8) {
+            let renderer = ImageRenderer(content: NotesText(markdown: notes).padding(14).frame(width: DS.width - 28)
+                .background(Color(nsColor: .windowBackgroundColor)))
+            renderer.scale = 2
+            if let tiff = renderer.nsImage?.tiffRepresentation,
+               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: args[i + 1]).appending(path: "notes.png"))
+            }
+        }
         exit(0)
     }
 }

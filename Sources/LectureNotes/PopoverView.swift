@@ -478,6 +478,15 @@ struct HistoryPane: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
+        if let dir = state.openLecture, let record = state.history.first(where: { $0.dir == dir }) {
+            LectureDetail(record: record)
+                .id(dir)
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "History") {
                 if !state.history.isEmpty {
@@ -507,7 +516,7 @@ struct HistoryPane: View {
                 }
             }
             if !state.history.isEmpty {
-                Text("Right-click a lecture for more options.")
+                Text("Click a lecture to open it. Right-click for more options.")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 4)
@@ -568,11 +577,14 @@ struct HistoryRow: View {
         .background(hovering ? Color.primary.opacity(0.05) : .clear)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture(count: 2) {
-            if let docURL = record.docURL { NSWorkspace.shared.open(docURL) }
-            else if record.hasNotes { state.openNotes(record.dir) }
-        }
+        .onTapGesture { state.openLecture = record.dir }
         .contextMenu {
+            Button("Open") { state.openLecture = record.dir }
+            Button("Rename…") {
+                state.renameRequested = true
+                state.openLecture = record.dir
+            }
+            Divider()
             if let docURL = record.docURL { Link("Open Google Doc", destination: docURL) }
             if record.hasNotes {
                 Button("View notes") { state.openNotes(record.dir) }
@@ -586,9 +598,7 @@ struct HistoryRow: View {
         }
     }
 
-    private var title: String {
-        record.meta.title?.components(separatedBy: " — ").last ?? "Untitled lecture"
-    }
+    private var title: String { record.name }
 
     private var subtitle: String {
         var text = record.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())

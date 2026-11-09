@@ -231,6 +231,18 @@ final class Google: NSObject, ObservableObject, ASWebAuthenticationPresentationC
         return URL(string: "https://docs.google.com/document/d/\(id)/edit")!
     }
 
+    /// Renames a Doc this app created. `docURL` looks like https://docs.google.com/document/d/<id>/edit.
+    func renameDoc(_ docURL: URL, to name: String) async throws {
+        let parts = docURL.pathComponents
+        guard let i = parts.firstIndex(of: "d"), i + 1 < parts.count else { return }
+        var request = URLRequest(url: URL(string: "https://www.googleapis.com/drive/v3/files/\(parts[i + 1])?supportsAllDrives=true")!)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        _ = try await Self.send(request)
+    }
+
     private func get(_ url: String) async throws -> [String: Any] {
         var request = URLRequest(url: URL(string: url)!)
         request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization")

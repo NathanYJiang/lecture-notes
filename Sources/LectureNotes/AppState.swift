@@ -45,6 +45,8 @@ struct LectureRecord: Identifiable, Equatable {
     let hasNotes: Bool
     var id: URL { dir }
     var docURL: URL? { meta.docURL.flatMap(URL.init(string:)) }
+    /// Saved titles look like "Nov 9, 2026 — Divide and Conquer"; this is the part after the date.
+    var name: String { meta.title?.components(separatedBy: " — ").last ?? "Untitled lecture" }
 }
 
 enum Tab: Hashable { case record, transcript, history }
@@ -122,6 +124,8 @@ final class AppState: ObservableObject {
     let meter = LevelMeter()
     let live = LiveTranscript()
     @Published var history: [LectureRecord] = []
+    @Published var openLecture: URL?
+    @Published var renameRequested = false
 
     private var recorder: Recorder?
     private var liveTranscribers: [LiveTranscriber] = []
@@ -428,7 +432,7 @@ final class AppState: ObservableObject {
         audioURL = fm.fileExists(atPath: mixed.path) ? mixed : record.dir.appending(path: "mic.m4a")
         sessionDir = record.dir
         isRegenerating = true
-        tab = .record
+        if openLecture != record.dir { tab = .record }
         phase = retranscribe ? .transcribing : .summarizing
         processTask = Task { await process(forceTranscribe: retranscribe) }
     }
@@ -533,11 +537,33 @@ final class AppState: ObservableObject {
 
     private func docTitle(notes: String, dir: URL, regenerating: Bool) -> String {
         let recorded = Self.folderFormat.date(from: dir.lastPathComponent) ?? Date()
-        let date = recorded.formatted(.dateTime.month(.abbreviated).day().year())
         let previous = regenerating ? existingTitle(in: dir) : nil
         let name = previous ?? lectureTitle.trimmingCharacters(in: .whitespaces)
         let title = name.isEmpty ? (Markdown.title(of: notes) ?? "Lecture Notes") : name
-        return "\(date) — \(title)"
+        return Self.fullTitle(name: title, date: recorded)
+    }
+
+    private static func fullTitle(name: String, date: Date) -> String {
+        "\(date.formatted(.dateTime.month(.abbreviated).day().year())) — \(name)"
+    }
+
+    /// Renames a past lecture everywhere it shows up: History, the saved notes page, and its Google Doc.
+    func rename(_ record: LectureRecord, to newName: String) {
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != (existingTitle(in: record.dir) ?? record.name) else { return }
+        let title = Self.fullTitle(name: name, date: record.date)
+        updateMeta(in: record.dir) { $0.title = title }
+        if let notes = try? String(contentsOf: record.dir.appending(path: "notes.md"), encoding: .utf8) {
+            try? Markdown.html(notes, title: title, styled: true).write(to: record.dir.appending(path: "notes.html"), atomically: true, encoding: .utf8)
+        }
+        loadHistory()
+        if let docURL = record.docURL {
+            Task { try? await Google.shared.renameDoc(docURL, to: title) }
+        }
+    }
+
+    func isProcessing(_ record: LectureRecord) -> Bool {
+        sessionDir == record.dir && (phase.isBusy || isRecording)
     }
 
     private func existingTitle(in dir: URL) -> String? {
