@@ -43,6 +43,25 @@ struct LectureDetail: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
 
+                if let important = record.meta.important, !important.isEmpty {
+                    CardDivider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(important, id: \.self) { item in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Image(systemName: "flag.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.orange)
+                                Text(item).font(.system(size: 12.5))
+                            }
+                        }
+                    }
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color.orange.opacity(0.07))
+                }
+
                 if state.isProcessing(record) {
                     CardDivider()
                     Row(icon: "hourglass", tint: Brand.indigo, title: state.phase.label) {

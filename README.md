@@ -41,6 +41,7 @@
 - **Resilient.** It retries when the AI is overloaded and falls back to other free Gemini models if one is retired. Recordings and transcripts are saved before the AI step, so nothing is lost. If something fails, hit **Retry**.
 - **Your style.** The note-taking prompt is editable. The default is minimal: a statement, then bullets with ***bold and italic*** key ideas.
 - **Mic only, or mic + system audio** for online lectures and Zoom.
+- **Auto-named and flagged.** The AI names each lecture (e.g. *Nov 9, 2026 — Mass Spectrometry Fragmentation*) and flags exams, deadlines, and "this will be on the test" moments with real dates, so "next Friday" becomes *Fri, Nov 13*.
 - **History** of every lecture. Click one to read its notes and transcript right in the menu bar, rename it (its Google Doc gets renamed too), copy, re-generate, or re-transcribe.
 - **Launch at login**, and a quit warning so you can't accidentally kill a recording.
 

@@ -603,6 +603,7 @@ struct HistoryRow: View {
     private var subtitle: String {
         var text = record.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
         if let duration = record.meta.duration { text += "  ·  " + AppState.format(duration) }
+        if let count = record.meta.important?.count, count > 0 { text += "  ·  ⚑ \(count) important" }
         return text
     }
 }

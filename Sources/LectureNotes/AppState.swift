@@ -28,6 +28,9 @@ enum Phase: Equatable {
 
 struct LectureMeta: Codable, Equatable {
     var title: String?
+    /// The person named it, so making notes again keeps their name instead of the AI's.
+    var named: Bool?
+    var important: [String]?
     var duration: TimeInterval?
     var docURL: String?
 }
@@ -496,13 +499,20 @@ final class AppState: ObservableObject {
             } else {
                 try? slideText.write(to: dir.appending(path: "slides.txt"), atomically: true, encoding: .utf8)
             }
-            let notes = try await Summarizer.summarize(transcript, context: hints, slides: slideText, config: config)
+            let recorded = Self.folderFormat.date(from: dir.lastPathComponent) ?? Date()
+            let summary = try await Summarizer.summarize(transcript, context: hints, slides: slideText, date: recorded, config: config)
             guard !Task.isCancelled else { return }
+            let notes = summary.notes
             try notes.write(to: dir.appending(path: "notes.md"), atomically: true, encoding: .utf8)
-            let title = docTitle(notes: notes, dir: dir, regenerating: regenerating)
+            let typedName = regenerating ? "" : lectureTitle.trimmingCharacters(in: .whitespaces)
+            let title = docTitle(summary: summary, typedName: typedName, dir: dir, regenerating: regenerating)
             let html = Markdown.html(notes, title: title)
             try Markdown.html(notes, title: title, styled: true).write(to: dir.appending(path: "notes.html"), atomically: true, encoding: .utf8)
-            updateMeta(in: dir) { $0.title = title }
+            updateMeta(in: dir) {
+                $0.title = title
+                $0.important = summary.important
+                if !typedName.isEmpty { $0.named = true }
+            }
 
             var docURL: URL?
             uploadError = nil
@@ -535,12 +545,17 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func docTitle(notes: String, dir: URL, regenerating: Bool) -> String {
+    /// A name the person gave wins; otherwise the AI's short name, then the notes' heading.
+    private func docTitle(summary: LectureSummary, typedName: String, dir: URL, regenerating: Bool) -> String {
         let recorded = Self.folderFormat.date(from: dir.lastPathComponent) ?? Date()
-        let previous = regenerating ? existingTitle(in: dir) : nil
-        let name = previous ?? lectureTitle.trimmingCharacters(in: .whitespaces)
-        let title = name.isEmpty ? (Markdown.title(of: notes) ?? "Lecture Notes") : name
-        return Self.fullTitle(name: title, date: recorded)
+        let meta = readMeta(in: dir)
+        let kept = regenerating && meta.named == true ? existingTitle(in: dir) : nil
+        let name = kept ?? (typedName.isEmpty ? nil : typedName) ?? summary.name ?? Markdown.title(of: summary.notes) ?? "Lecture Notes"
+        return Self.fullTitle(name: name, date: recorded)
+    }
+
+    private func readMeta(in dir: URL) -> LectureMeta {
+        (try? JSONDecoder().decode(LectureMeta.self, from: Data(contentsOf: dir.appending(path: "meta.json")))) ?? LectureMeta()
     }
 
     private static func fullTitle(name: String, date: Date) -> String {
@@ -552,7 +567,10 @@ final class AppState: ObservableObject {
         let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != (existingTitle(in: record.dir) ?? record.name) else { return }
         let title = Self.fullTitle(name: name, date: record.date)
-        updateMeta(in: record.dir) { $0.title = title }
+        updateMeta(in: record.dir) {
+            $0.title = title
+            $0.named = true
+        }
         if let notes = try? String(contentsOf: record.dir.appending(path: "notes.md"), encoding: .utf8) {
             try? Markdown.html(notes, title: title, styled: true).write(to: record.dir.appending(path: "notes.html"), atomically: true, encoding: .utf8)
         }

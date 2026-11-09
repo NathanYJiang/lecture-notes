@@ -38,6 +38,14 @@ enum SummarizerError: LocalizedError {
     }
 }
 
+struct LectureSummary {
+    var notes: String
+    /// Short AI-picked name, e.g. "Mass Spectrometry Fragmentation".
+    var name: String?
+    /// Exams, deadlines, and things flagged as tested, with real dates.
+    var important: [String]
+}
+
 enum Summarizer {
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -46,9 +54,22 @@ enum Summarizer {
         return URLSession(configuration: config)
     }()
 
-    static func summarize(_ transcript: String, context: String = "", slides: String = "", config: LLMConfig) async throws -> String {
+    static func summarize(_ transcript: String, context: String = "", slides: String = "", date: Date = Date(), config: LLMConfig) async throws -> LectureSummary {
         if config.provider.needsKey && config.apiKey.isEmpty { throw SummarizerError.missingKey }
-        let system = config.stylePrompt + "\n\nRespond with only the Markdown notes. Write math as plain text with Unicode symbols (Θ(log n), n², ≤, ∑), never LaTeX or $...$, because the notes get pasted into apps that don't render it."
+        let day = date.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+        let system = config.stylePrompt + """
+
+
+        Respond with only the Markdown notes. Write math as plain text with Unicode symbols (Θ(log n), n², ≤, ∑), never LaTeX or $...$, because the notes get pasted into apps that don't render it.
+
+        After the notes, add this block, filled in:
+        <lecture-info>
+        name: a short name for the lecture, 2–6 words, no date or course number
+        important:
+        - one line per exam, quiz, homework, deadline, or thing the lecturer said will be tested or is important to know
+        </lecture-info>
+        The lecture was on \(day). Write dates in the important lines as real dates like "Fri, Nov 13" (turn "next Friday" into the date). Leave the important list empty if nothing like that came up; don't pad it.
+        """
         var user = ""
         if !context.isEmpty {
             user += "Context from the student (topic, key terms, things to focus on). Speech recognition often mangles these terms, so use this to correct them:\n<context>\n\(context)\n</context>\n\n"
@@ -70,9 +91,35 @@ enum Summarizer {
         } catch let error as URLError where [.notConnectedToInternet, .networkConnectionLost, .dnsLookupFailed].contains(error.code) {
             throw SummarizerError.offline
         }
-        let notes = stripFence(raw)
-        guard !notes.isEmpty else { throw SummarizerError.emptyResponse }
-        return notes
+        let summary = parse(raw)
+        guard !summary.notes.isEmpty else { throw SummarizerError.emptyResponse }
+        return summary
+    }
+
+    /// Splits the notes from the trailing <lecture-info> block. Models that skip the block still give usable notes.
+    static func parse(_ raw: String) -> LectureSummary {
+        guard let start = raw.range(of: "<lecture-info>") else {
+            return LectureSummary(notes: stripFence(raw), name: nil, important: [])
+        }
+        let after = raw[start.upperBound...]
+        let end = after.range(of: "</lecture-info>")
+        let info = end.map { after[..<$0.lowerBound] } ?? after
+        let rest = end.map { String(after[$0.upperBound...]) } ?? ""
+        var name: String?
+        var important: [String] = []
+        for line in info.components(separatedBy: .newlines).map({ $0.trimmingCharacters(in: .whitespaces) }) {
+            if line.lowercased().hasPrefix("name:") {
+                let value = line.dropFirst(5).trimmingCharacters(in: CharacterSet(charactersIn: " *\"'"))
+                if !value.isEmpty { name = String(value.prefix(80)) }
+            } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
+                let item = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
+                if !item.isEmpty && !["none", "n/a", "nothing"].contains(item.lowercased().trimmingCharacters(in: .punctuationCharacters)) {
+                    important.append(item)
+                }
+            }
+        }
+        let notes = stripFence(String(raw[..<start.lowerBound]) + rest)
+        return LectureSummary(notes: notes, name: name, important: important)
     }
 
     private static func anthropic(system: String, user: String, config: LLMConfig) async throws -> String {
