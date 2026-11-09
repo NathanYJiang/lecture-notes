@@ -193,10 +193,6 @@ final class AppState: ObservableObject {
         return (decks, lastError)
     }
 
-    func removeSlides(_ deck: SlideDeck) {
-        slides.removeAll { $0 == deck }
-    }
-
     /// The popover closes while the panel is up; attached slides stay in state for when it reopens.
     func chooseSlides() {
         addSlides(Self.pickSlideFiles())

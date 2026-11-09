@@ -173,33 +173,41 @@ struct RecordPane: View {
     }
 
     private var slidesRow: some View {
-        inputRow(icon: "rectangle.on.rectangle") {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(state.slides) { deck in
-                    HStack(spacing: 6) {
-                        Text(deck.name).lineLimit(1).truncationMode(.middle)
-                        Spacer(minLength: 4)
-                        Button { state.removeSlides(deck) } label: { Image(systemName: "xmark.circle.fill") }
+        VStack(alignment: .leading, spacing: 0) {
+            Row(icon: "rectangle.stack.fill", tint: .teal, title: "Slides", subtitle: slidesSubtitle) {
+                HStack(spacing: 8) {
+                    if !state.slides.isEmpty {
+                        Button { state.slides = [] } label: { Image(systemName: "xmark.circle.fill") }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
-                            .help("Remove")
+                            .help("Remove slides")
                     }
-                }
-                Button(state.slides.isEmpty ? "Add lecture slides for better accuracy" : "Add more…") { state.chooseSlides() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Brand.indigo)
-                if let error = state.slidesError {
-                    Text(error).font(.system(size: 11)).foregroundStyle(.red)
+                    Button(state.slides.isEmpty ? "Add" : "Add more") { state.chooseSlides() }
+                        .controlSize(.small)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if let error = state.slidesError {
+                Text(error)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
         }
         .contentShape(Rectangle())
         .dropDestination(for: URL.self) { urls, _ in
             state.addSlides(urls)
             return true
         }
-        .help("Click or drag a PDF here. The transcriber learns the slides' terms, and the AI uses them to get the notes right.")
+        .help("Add or drag in the lecture's PDF. The transcriber learns its terms, and the AI uses it to get the notes right.")
+    }
+
+    private var slidesSubtitle: String {
+        switch state.slides.count {
+        case 0: "PDF · improves accuracy"
+        case 1: state.slides[0].name
+        default: "\(state.slides.count) files"
+        }
     }
 
     @ViewBuilder private var saveToRow: some View {
