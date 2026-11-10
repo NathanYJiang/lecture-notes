@@ -125,6 +125,8 @@ final class Prefs: ObservableObject {
         }
     }
     @Published var stylePrompt: String { didSet { d.set(stylePrompt, forKey: "stylePrompt") } }
+    /// Re-transcribe with Whisper after Stop (needs the model downloaded).
+    @Published var highAccuracy: Bool { didSet { d.set(highAccuracy, forKey: "highAccuracy") } }
     @Published var openDocWhenDone: Bool { didSet { d.set(openDocWhenDone, forKey: "openDocWhenDone") } }
     @Published var folderID: String { didSet { d.set(folderID, forKey: "folderID") } }
     @Published var folderName: String { didSet { d.set(folderName, forKey: "folderName") } }
@@ -150,6 +152,7 @@ final class Prefs: ObservableObject {
         let savedPrompt = d.string(forKey: "stylePrompt")
         stylePrompt = savedPrompt == nil || savedPrompt == Self.legacyStylePrompt ? Self.defaultStylePrompt : savedPrompt!
         openDocWhenDone = d.object(forKey: "openDocWhenDone") as? Bool ?? true
+        highAccuracy = d.object(forKey: "highAccuracy") as? Bool ?? true
         folderID = d.string(forKey: "folderID") ?? ""
         folderName = d.string(forKey: "folderName") ?? "Lecture Notes"
         provider = LLMProvider(rawValue: d.string(forKey: "provider") ?? "") ?? .gemini

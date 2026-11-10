@@ -43,6 +43,26 @@ enum Snapshot {
         }
     }
 
+    /// `LectureNotes --whisper <audio> <out.txt>` runs the in-app Whisper path on a file and reports timing.
+    static func whisperIfRequested() {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--whisper"), i + 2 < args.count else { return }
+        let audio = URL(fileURLWithPath: args[i + 1])
+        let out = URL(fileURLWithPath: args[i + 2])
+        Task.detached {
+            let start = Date()
+            var text: String
+            do {
+                let transcript = try await WhisperTranscriber.transcribe(audio, languageCode: "en") { _ in }
+                text = "SECONDS: \(Int(Date().timeIntervalSince(start)))\n\n" + transcript
+            } catch {
+                text = "ERROR: \(error)"
+            }
+            try? text.write(to: out, atomically: true, encoding: .utf8)
+            exit(0)
+        }
+    }
+
     static func runIfRequested() {
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }

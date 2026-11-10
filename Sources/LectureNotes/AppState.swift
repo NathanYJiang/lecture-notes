@@ -31,6 +31,10 @@ struct LectureMeta: Codable, Equatable {
     /// The person named it, so making notes again keeps their name instead of the AI's.
     var named: Bool?
     var important: [String]?
+    /// Which engine made transcript.txt: "whisper", "apple" (from the file), or "live".
+    var transcriber: String?
+    /// Making notes was interrupted by a new recording; offer to finish them later.
+    var notesPending: Bool?
     var duration: TimeInterval?
     var docURL: String?
 }
@@ -140,6 +144,10 @@ final class AppState: ObservableObject {
     private var liveIncomplete = false
     /// The speech service died mid-recording; the audio is fine and gets transcribed in full after Stop.
     @Published var liveInterrupted = false
+    /// 0–1 while Whisper transcribes, for the status row.
+    @Published var transcribeProgress: Double?
+    /// Set when Whisper failed and the notes fell back to Apple's transcript.
+    @Published var transcriptNotice: String?
     private var processTask: Task<Void, Never>?
     @Published var uploadError: String?
     private var audioURL: URL?
@@ -263,9 +271,25 @@ final class AppState: ObservableObject {
     func toggleRecording() {
         if isRecording {
             stop()
-        } else if !phase.isBusy {
+        } else if canStartRecording {
+            if phase.isBusy { pauseNotesForRecording() }
             start()
         }
+    }
+
+    /// Back-to-back classes: a new recording can start while the last one's notes are still being made.
+    var canStartRecording: Bool { !phase.isBusy || phase == .transcribing || phase == .summarizing }
+
+    private func pauseNotesForRecording() {
+        if let dir = sessionDir { updateMeta(in: dir) { $0.notesPending = true } }
+        processTask?.cancel()
+        processTask = nil
+        transcribeProgress = nil
+    }
+
+    /// The most recent lecture whose notes were paused by a new recording.
+    var pausedLecture: LectureRecord? {
+        history.first { $0.meta.notesPending == true && !$0.hasNotes && $0.dir != sessionDir }
     }
 
     // MARK: Recording
@@ -279,6 +303,7 @@ final class AppState: ObservableObject {
         live.reset()
         meter.reset()
         liveInterrupted = false
+        transcriptNotice = nil
         phase = .preparing
 
         let prefs = Prefs.shared
@@ -485,16 +510,8 @@ final class AppState: ObservableObject {
         let slideText = regenerating ? savedSlides : slidesText
         let hintTerms = Self.merge(Self.terms(from: savedContext), regenerating ? Self.slideTerms(from: slideText) : slideTerms)
         do {
-            let transcriptURL = dir.appending(path: "transcript.txt")
-            let transcript: String
-            if !forceTranscribe, let saved = try? String(contentsOf: transcriptURL, encoding: .utf8), !saved.isEmpty {
-                transcript = saved
-            } else {
-                phase = .transcribing
-                transcript = try await Transcriber.transcribe(audioURL, localeID: prefs.localeID, terms: hintTerms)
-                guard !Task.isCancelled else { return }
-                try transcript.write(to: transcriptURL, atomically: true, encoding: .utf8)
-            }
+            let transcript = try await makeTranscript(audioURL: audioURL, dir: dir, terms: hintTerms, force: forceTranscribe)
+            guard !Task.isCancelled else { return }
 
             phase = .summarizing
             let model = prefs.model.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -547,12 +564,65 @@ final class AppState: ObservableObject {
                 if let docURL { NSWorkspace.shared.open(docURL) }
             }
             try? FileManager.default.removeItem(at: dir.appending(path: "error.txt"))
+            updateMeta(in: dir) { $0.notesPending = nil }
+            loadHistory()
         } catch {
             if Task.isCancelled { return }
             phase = .failed(error.localizedDescription)
             let line = "\(Date().formatted(.iso8601)) [\(prefs.provider.rawValue) \(prefs.model)] \(error.localizedDescription) | \(error)\n"
             try? line.write(to: dir.appending(path: "error.txt"), atomically: true, encoding: .utf8)
         }
+    }
+
+    /// Whisper (when downloaded and on) gives the best transcript, so it replaces the live one. If it fails,
+    /// fall back to the live transcript, then to Apple's file transcription, so there are always notes.
+    private func makeTranscript(audioURL: URL, dir: URL, terms: [String], force: Bool) async throws -> String {
+        let prefs = Prefs.shared
+        let transcriptURL = dir.appending(path: "transcript.txt")
+        let saved = (try? String(contentsOf: transcriptURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let savedBy = readMeta(in: dir).transcriber ?? (saved.isEmpty ? nil : "live")
+        let useWhisper = prefs.highAccuracy && WhisperFiles.isInstalled
+        transcriptNotice = nil
+
+        if !force && !saved.isEmpty && (savedBy == "whisper" || !useWhisper) { return saved }
+
+        func save(_ text: String, by engine: String) throws -> String {
+            try text.write(to: transcriptURL, atomically: true, encoding: .utf8)
+            updateMeta(in: dir) { $0.transcriber = engine }
+            return text
+        }
+
+        phase = .transcribing
+        if useWhisper {
+            if savedBy == "live" {
+                try? saved.write(to: dir.appending(path: "transcript-live.txt"), atomically: true, encoding: .utf8)
+            }
+            transcribeProgress = 0
+            defer { transcribeProgress = nil }
+            let language = Locale(identifier: prefs.localeID).language.languageCode?.identifier ?? "en"
+            do {
+                let text = try await WhisperTranscriber.transcribe(audioURL, languageCode: language) { progress in
+                    Task { @MainActor in
+                        if AppState.shared.transcribeProgress != nil { AppState.shared.transcribeProgress = progress }
+                    }
+                }
+                return try save(text, by: "whisper")
+            } catch {
+                if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                transcriptNotice = "High-accuracy transcription failed, so these notes use the standard transcript. \(error.localizedDescription)"
+                NSLog("Whisper failed: \(error)")
+            }
+        }
+        if !force && !saved.isEmpty { return saved }
+        let text = try await Transcriber.transcribe(audioURL, localeID: prefs.localeID, terms: terms)
+        return try save(text, by: "apple")
+    }
+
+    var statusLabel: String {
+        if phase == .transcribing, let progress = transcribeProgress {
+            return "Transcribing (high accuracy) \(Int(progress * 100))%"
+        }
+        return phase.label
     }
 
     /// A name the person gave wins; otherwise the AI's short name, then the notes' heading.

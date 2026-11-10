@@ -64,7 +64,7 @@ struct LectureDetail: View {
 
                 if state.isProcessing(record) {
                     CardDivider()
-                    Row(icon: "hourglass", tint: Brand.indigo, title: state.phase.label) {
+                    Row(icon: "hourglass", tint: Brand.indigo, title: state.statusLabel) {
                         ProgressView().controlSize(.small)
                     }
                 }
@@ -155,7 +155,8 @@ struct LectureDetail: View {
     private var subtitle: String {
         var parts = [record.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())]
         if let duration = record.meta.duration { parts.append(AppState.format(duration)) }
-        if hasSlides { parts.append("Slides attached") }
+        if hasSlides { parts.append("Slides") }
+        if record.meta.transcriber == "whisper" { parts.append("High accuracy") }
         return parts.joined(separator: "  ·  ")
     }
 

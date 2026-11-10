@@ -47,6 +47,7 @@ private struct Field: View {
 
 private struct AudioSettings: View {
     @EnvironmentObject var prefs: Prefs
+    @ObservedObject private var whisper = WhisperModel.shared
     @State private var languages: [(id: String, name: String)] = []
 
     var body: some View {
@@ -75,6 +76,27 @@ private struct AudioSettings: View {
             if prefs.audioSource == .micAndSystem {
                 Caption("System audio captures Zoom, YouTube, etc. macOS asks for Screen & System Audio Recording permission the first time. Wear headphones so the mic doesn't pick up the same audio twice.")
             }
+
+            SectionHeader(title: "Transcript")
+            Card {
+                Row(icon: "wand.and.stars", tint: .teal, title: "High accuracy", subtitle: "Whisper, after you stop") {
+                    Toggle("", isOn: $prefs.highAccuracy)
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                }
+                if prefs.highAccuracy {
+                    CardDivider()
+                    if whisper.isReady {
+                        Row(icon: "checkmark.circle.fill", tint: .green, title: "Speech model", subtitle: "Downloaded · \(WhisperModel.sizeLabel)") {
+                            Button("Delete") { whisper.delete() }.controlSize(.small)
+                        }
+                    } else {
+                        WhisperDownloadRow(model: whisper)
+                    }
+                }
+            }
+            Caption(prefs.highAccuracy
+                ? "The live transcript during class uses Apple's recognizer. After you stop, Whisper re-transcribes the whole recording on your Mac (a few minutes per hour of lecture), which is far more accurate in lecture halls. Audio never leaves your Mac."
+                : "Notes use the live transcript from Apple's recognizer. Fastest, but it struggles with echoey rooms and distant speakers.")
         }
         .task { await loadLanguages() }
     }

@@ -5,7 +5,7 @@ enum Keychain {
     private static let service = "com.nathanjiang.LectureNotes"
 
     #if DEBUG
-    private static let isDebugHarness = CommandLine.arguments.contains { $0 == "--snapshot" || $0 == "--demo-busy" }
+    private static let isDebugHarness = CommandLine.arguments.contains { $0 == "--snapshot" || $0 == "--demo-busy" || $0 == "--whisper" }
     #endif
 
     static func get(_ account: String) -> String? {

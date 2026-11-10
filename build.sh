@@ -10,8 +10,10 @@ swift build -c release
 
 APP=build/LectureNotes.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$(swift build -c release --show-bin-path)/LectureNotes" "$APP/Contents/MacOS/"
+BIN="$(swift build -c release --show-bin-path)"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
+cp "$BIN/LectureNotes" "$APP/Contents/MacOS/"
+cp -R "$BIN/whisper.framework" "$APP/Contents/Frameworks/"
 cp Resources/Info.plist "$APP/Contents/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
@@ -29,12 +31,17 @@ if [[ -z "${SIGN_ID:-}" ]] && security find-identity -p codesigning 2>/dev/null 
     SIGN_ID="$DEV_ID"
 fi
 SIGN_ID="${SIGN_ID:--}"
+FRAMEWORK="$APP/Contents/Frameworks/whisper.framework"
 if [[ "$SIGN_ID" == "-" ]]; then
+    codesign --force --sign - "$FRAMEWORK"
     codesign --force --sign - "$APP"
 elif [[ "$SIGN_ID" == "$DEV_ID" ]]; then
-    codesign --force --entitlements Resources/LectureNotes.entitlements --sign "$DEV_ID" "$APP" \
-        || { echo "warning: signing with \"$DEV_ID\" failed, falling back to ad-hoc"; SIGN_ID="-"; codesign --force --sign - "$APP"; }
+    { codesign --force --sign "$DEV_ID" "$FRAMEWORK" \
+        && codesign --force --entitlements Resources/LectureNotes.entitlements --sign "$DEV_ID" "$APP"; } \
+        || { echo "warning: signing with \"$DEV_ID\" failed, falling back to ad-hoc"; SIGN_ID="-";
+             codesign --force --sign - "$FRAMEWORK"; codesign --force --sign - "$APP"; }
 else
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$FRAMEWORK"
     codesign --force --options runtime --timestamp \
         --entitlements Resources/LectureNotes.entitlements --sign "$SIGN_ID" "$APP"
 fi

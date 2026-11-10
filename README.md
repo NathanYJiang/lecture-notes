@@ -29,13 +29,15 @@
 
 1. Click the waveform icon in your menu bar and hit **Start recording**.
 2. Watch the transcript appear live. It's transcribed **on your Mac** with Apple's `SpeechAnalyzer`, so audio never leaves your laptop.
+   After you stop, **Whisper Large v3 Turbo** re-transcribes the whole recording on-device for a much more accurate transcript (one-time 1.6 GB model download).
 3. Hit **Stop**. The transcript goes to an AI model, which writes concise notes: a one-line overview, then sections of bullets with bold key terms, each fact stated once.
 4. Click **Copy notes** and paste into Google Docs, Notion, Apple Notes, or anywhere else. Formatting comes with it. Or connect Google Drive and every lecture becomes a Doc automatically.
 
 ## Features
 
 - **Lives in the menu bar.** No Dock icon and no windows. Click, record, done.
-- **Private, on-device transcription** with a live transcript as the lecture happens.
+- **Private, on-device transcription** with a live transcript as the lecture happens, then a high-accuracy pass with [whisper.cpp](https://github.com/ggml-org/whisper.cpp) after you stop. In a real lecture hall, Apple's recognizer heard "callbon that roll" where Whisper got "Chlorine-37… is a 3:1 ratio". Voice-activity detection keeps Whisper from looping on silence.
+- **Back-to-back classes.** You can start the next recording while the last one's notes are still being made; those notes pause and you finish them with one click.
 - **Slides for accuracy.** Drop in the lecture's PDF or PowerPoint, no typing needed. The recognizer learns the slides' jargon and titles, and the AI uses the slides to spell terms right and fill in what "this diagram" meant. Works retroactively too: right-click an old lecture → **Add slides & re-transcribe**.
 - **Free by default.** Uses Google's free Gemini tier. You can also bring your own key for Claude, OpenAI, OpenRouter or DeepSeek, run it locally with Ollama, or point it at any OpenAI-compatible endpoint.
 - **Resilient.** It retries when the AI is overloaded and falls back to other free Gemini models if one is retired. Recordings and transcripts are saved before the AI step, so nothing is lost. If something fails, hit **Retry**.

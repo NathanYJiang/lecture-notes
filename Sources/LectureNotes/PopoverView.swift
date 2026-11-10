@@ -78,6 +78,7 @@ struct RecordPane: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Prefs
     @EnvironmentObject var google: Google
+    @ObservedObject private var whisper = WhisperModel.shared
     @State private var signInError: String?
 
     private var languageName: String {
@@ -133,9 +134,11 @@ struct RecordPane: View {
                 tint: state.isRecording ? .red : Brand.indigo,
                 action: state.toggleRecording
             )
-            .disabled(state.phase.isBusy)
-            .opacity(state.phase.isBusy ? 0.5 : 1)
+            .disabled(!state.isRecording && !state.canStartRecording)
+            .opacity(!state.isRecording && !state.canStartRecording ? 0.5 : 1)
+            .help(state.phase.isBusy && state.canStartRecording ? "Starting pauses the current notes. Finish them later from History." : "")
         }
+        .onAppear { state.loadHistory() }
     }
 
     private var meter: some View {
@@ -232,6 +235,20 @@ struct RecordPane: View {
         }
     }
 
+    @ViewBuilder private func notice(_ text: String?) -> some View {
+        if let text {
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 48)
+                .padding(.trailing, 14)
+                .padding(.bottom, 8)
+        }
+    }
+
     private var statusRow: AnyView? {
         switch state.phase {
         case .idle, .recording:
@@ -242,9 +259,19 @@ struct RecordPane: View {
                         .controlSize(.small)
                 })
             }
+            if state.phase == .idle, let paused = state.pausedLecture {
+                return AnyView(Row(icon: "pause.circle.fill", tint: .orange, title: "Notes paused",
+                                   subtitle: paused.meta.title == nil ? paused.date.formatted(.dateTime.weekday().hour().minute()) : paused.name) {
+                    Button("Make notes") { state.regenerate(paused, retranscribe: false) }
+                        .controlSize(.small)
+                })
+            }
+            if prefs.highAccuracy && !whisper.isReady {
+                return AnyView(WhisperDownloadRow(model: whisper))
+            }
             return nil
         case .preparing, .finishing, .transcribing, .summarizing, .uploading:
-            return AnyView(Row(icon: "hourglass", tint: Brand.indigo, title: state.phase.label) {
+            return AnyView(Row(icon: "hourglass", tint: Brand.indigo, title: state.statusLabel) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     if state.canCancel {
@@ -255,26 +282,20 @@ struct RecordPane: View {
             })
         case .done(let url):
             if let url {
-                return AnyView(Row(icon: "checkmark.circle.fill", tint: .green, title: "Notes saved", subtitle: prefs.folderName) {
-                    Link(destination: url) {
-                        Label("Open", systemImage: "arrow.up.right").font(.system(size: 13, weight: .semibold))
+                return AnyView(VStack(spacing: 0) {
+                    Row(icon: "checkmark.circle.fill", tint: .green, title: "Notes saved", subtitle: prefs.folderName) {
+                        Link(destination: url) {
+                            Label("Open", systemImage: "arrow.up.right").font(.system(size: 13, weight: .semibold))
+                        }
                     }
+                    notice(state.transcriptNotice)
                 })
             }
             return AnyView(VStack(spacing: 0) {
                 Row(icon: "checkmark.circle.fill", tint: .green, title: "Notes ready",
                     subtitle: "Paste into Google Docs, Notion, anywhere")
-                if let uploadError = state.uploadError {
-                    Text(uploadError)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineLimit(3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 48)
-                        .padding(.trailing, 14)
-                        .padding(.bottom, 8)
-                }
+                notice(state.transcriptNotice)
+                notice(state.uploadError)
                 HStack(spacing: 8) {
                     CopyNotesButton { state.copyNotes() }
                     SmallActionButton(title: "View", icon: "eye") { state.openNotes() }
@@ -636,5 +657,35 @@ struct CopyIconButton: View {
                 .foregroundStyle(copied ? .green : .secondary)
         }
         .help("Copy notes")
+    }
+}
+
+/// Offers the one-time Whisper model download, then shows its progress.
+struct WhisperDownloadRow: View {
+    @ObservedObject var model: WhisperModel
+
+    var body: some View {
+        switch model.state {
+        case .downloading(let progress):
+            Row(icon: "arrow.down.circle.fill", tint: .teal, title: "Downloading speech model",
+                subtitle: "\(Int(progress * 100))% of \(WhisperModel.sizeLabel)") {
+                HStack(spacing: 8) {
+                    ProgressView(value: progress).frame(width: 60)
+                    Button { model.cancel() } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Cancel download")
+                }
+            }
+        case .failed(let message):
+            Row(icon: "exclamationmark.triangle.fill", tint: .orange, title: "Speech model download failed", subtitle: message) {
+                Button("Retry") { model.download() }.controlSize(.small)
+            }
+        case .missing, .ready:
+            Row(icon: "wand.and.stars", tint: .teal, title: "Get high-accuracy transcripts",
+                subtitle: "One-time \(WhisperModel.sizeLabel) download") {
+                Button("Download") { model.download() }.controlSize(.small)
+            }
+        }
     }
 }

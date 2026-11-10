@@ -10,6 +10,7 @@ struct LectureNotesApp: App {
         Snapshot.runIfRequested()
         Snapshot.demoBusyIfRequested()
         Snapshot.renoteIfRequested()
+        Snapshot.whisperIfRequested()
         #endif
     }
 
@@ -30,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Menu bar apps have no window, so on first launch say where the app went.
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
-        if CommandLine.arguments.contains(where: { $0.hasPrefix("--snapshot") || $0 == "--demo-busy" || $0 == "--renote" }) { return }
+        if CommandLine.arguments.contains(where: { $0.hasPrefix("--snapshot") || $0 == "--demo-busy" || $0 == "--renote" || $0 == "--whisper" }) { return }
         #endif
         let localeID = Prefs.shared.localeID
         Task.detached(priority: .utility) { await LiveTranscriber.preload(localeID: localeID) }
