@@ -138,6 +138,7 @@ struct LectureDetail: View {
     private var moreMenu: some View {
         Menu {
             Button(record.hasNotes ? "Make notes again" : "Make notes") { state.regenerate(record, retranscribe: false) }
+            Button("Re-transcribe") { state.regenerate(record, retranscribe: true) }
             Button(hasSlides ? "Replace slides & re-transcribe…" : "Add slides & re-transcribe…") { state.addSlidesAndRetranscribe(record) }
             Divider()
             Button("Show in Finder") { state.showFiles(record.dir) }

@@ -6,12 +6,13 @@ import Speech
 final class LiveTranscriber: @unchecked Sendable {
     private let onVolatile: @Sendable (String) -> Void
     private let onFinal: @Sendable (String) -> Void
+    private let onFailure: @Sendable () -> Void
 
     /// Set only once `analyzer.start` has returned, so `finish` never finalizes an analyzer that isn't running.
     private var analyzer: SpeechAnalyzer?
     private var targetFormat: AVAudioFormat?
     private var continuation: AsyncStream<AnalyzerInput>.Continuation?
-    private var resultsTask: Task<Void, Error>?
+    private var resultsTask: Task<Void, Never>?
     private var converter: AVAudioConverter?
     private var finished = false
     private var pending: [AVAudioPCMBuffer] = []
@@ -19,9 +20,12 @@ final class LiveTranscriber: @unchecked Sendable {
     /// Guards state shared between `start`, `finish`, and the audio thread calling `append`.
     private let lock = NSLock()
 
-    init(onVolatile: @escaping @Sendable (String) -> Void, onFinal: @escaping @Sendable (String) -> Void) {
+    /// `onFailure` fires if the speech service dies mid-recording (macOS's recognizer process can crash).
+    init(onVolatile: @escaping @Sendable (String) -> Void, onFinal: @escaping @Sendable (String) -> Void,
+         onFailure: @escaping @Sendable () -> Void = {}) {
         self.onVolatile = onVolatile
         self.onFinal = onFinal
+        self.onFailure = onFailure
     }
 
     func start(localeID: String, terms: [String]) async throws {
@@ -50,10 +54,14 @@ final class LiveTranscriber: @unchecked Sendable {
         }
         if stopped { return }
 
-        let results = Task { [onVolatile, onFinal] in
-            for try await result in transcriber.results {
-                let text = String(result.text.characters)
-                result.isFinal ? onFinal(text) : onVolatile(text)
+        let results = Task { [onVolatile, onFinal, onFailure, lock] in
+            do {
+                for try await result in transcriber.results {
+                    let text = String(result.text.characters)
+                    result.isFinal ? onFinal(text) : onVolatile(text)
+                }
+            } catch {
+                if !lock.withLock({ self.finished }) { onFailure() }
             }
         }
         try await analyzer.start(inputSequence: stream)
@@ -65,7 +73,7 @@ final class LiveTranscriber: @unchecked Sendable {
         // `finish` ran while we were starting, so it couldn't finalize; do it here.
         if finishedMeanwhile {
             try? await analyzer.finalizeAndFinishThroughEndOfInput()
-            _ = try? await results.value
+            await results.value
         }
     }
 
@@ -165,6 +173,6 @@ final class LiveTranscriber: @unchecked Sendable {
         }
         continuation?.finish()
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
-        _ = try? await results?.value
+        await results?.value
     }
 }

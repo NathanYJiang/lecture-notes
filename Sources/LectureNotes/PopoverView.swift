@@ -392,7 +392,16 @@ struct TranscriptPane: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        TranscriptCard(live: state.live, isRecording: state.isRecording)
+        VStack(alignment: .leading, spacing: 8) {
+            TranscriptCard(live: state.live, isRecording: state.isRecording)
+            if state.liveInterrupted && state.isRecording {
+                Label("macOS's speech service stopped, so the live transcript paused. Recording continues, and the full transcript is made from the audio after you stop.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 4)
+            }
+        }
     }
 }
 
@@ -592,6 +601,7 @@ struct HistoryRow: View {
             }
             Divider()
             Button(record.hasNotes ? "Make notes again" : "Make notes") { state.regenerate(record, retranscribe: false) }
+            Button("Re-transcribe") { state.regenerate(record, retranscribe: true) }
             Button("Add slides & re-transcribe…") { state.addSlidesAndRetranscribe(record) }
             Divider()
             Button("Show in Finder") { state.showFiles(record.dir) }

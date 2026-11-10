@@ -138,6 +138,8 @@ final class AppState: ObservableObject {
     private(set) var sessionDir: URL?
     private var isRegenerating = false
     private var liveIncomplete = false
+    /// The speech service died mid-recording; the audio is fine and gets transcribed in full after Stop.
+    @Published var liveInterrupted = false
     private var processTask: Task<Void, Never>?
     @Published var uploadError: String?
     private var audioURL: URL?
@@ -276,6 +278,7 @@ final class AppState: ObservableObject {
         audioURL = nil
         live.reset()
         meter.reset()
+        liveInterrupted = false
         phase = .preparing
 
         let prefs = Prefs.shared
@@ -340,6 +343,13 @@ final class AppState: ObservableObject {
             onFinal: { [weak self] text in
                 Task { @MainActor in
                     self?.live.appendFinal(text, source: source)
+                }
+            },
+            onFailure: { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.isRecording else { return }
+                    self.liveIncomplete = true
+                    self.liveInterrupted = true
                 }
             }
         )
