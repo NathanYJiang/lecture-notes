@@ -15,6 +15,34 @@ enum Snapshot {
         }
     }
 
+    /// `LectureNotes --renote <lecture dir> <out.md>` re-runs the AI on a saved transcript with the current
+    /// settings and writes the result to <out.md>, without touching the lecture. For tuning the notes prompt.
+    static func renoteIfRequested() {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--renote"), i + 2 < args.count else { return }
+        let dir = URL(fileURLWithPath: args[i + 1])
+        let out = URL(fileURLWithPath: args[i + 2])
+        Task { @MainActor in
+            let prefs = Prefs.shared
+            let read = { (file: String) in (try? String(contentsOf: dir.appending(path: file), encoding: .utf8)) ?? "" }
+            let config = LLMConfig(provider: prefs.provider, model: prefs.model, baseURL: prefs.baseURL,
+                                   apiKey: prefs.apiKey, stylePrompt: prefs.stylePrompt)
+            let format = DateFormatter()
+            format.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+            let recorded = format.date(from: dir.lastPathComponent) ?? Date()
+            var text: String
+            do {
+                let s = try await Summarizer.summarize(read("transcript.txt"), context: read("context.txt"),
+                                                       slides: read("slides.txt"), date: recorded, config: config)
+                text = "NAME: \(s.name ?? "-")\nIMPORTANT:\n" + s.important.map { "- \($0)" }.joined(separator: "\n") + "\n\n---\n\n" + s.notes
+            } catch {
+                text = "ERROR: \(error.localizedDescription) | \(error)"
+            }
+            try? text.write(to: out, atomically: true, encoding: .utf8)
+            exit(0)
+        }
+    }
+
     static func runIfRequested() {
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }

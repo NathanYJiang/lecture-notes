@@ -93,7 +93,7 @@ final class Prefs: ObservableObject {
     You turn raw lecture transcripts into concise study notes in Markdown. Every fact appears exactly once.
 
     - Start with a single `# ` heading: a short, specific title for the lecture.
-    - Then one sentence saying what the lecture covered. Don't explain the content here; the sections do that.
+    - Then a short overview paragraph (2–4 sentences) giving the big picture: what the lecture was about, how its topics connect, and the main takeaway. Keep it high-level; leave specific facts, numbers, and definitions to the sections.
     - Organize the rest by topic with `## ` headings, in the order they were covered.
     - Under each topic, go straight to bullet points. Nest sub-bullets for details, steps, and examples.
     - Define each term once, where it first comes up, and **bold** it there. Use *italics* sparingly, for emphasis or examples.
