@@ -140,7 +140,6 @@ final class AppState: ObservableObject {
     private var timer: Timer?
     private var startedAt = Date()
     private(set) var sessionDir: URL?
-    private var isRegenerating = false
     private var liveIncomplete = false
     /// The speech service died mid-recording; the audio is fine and gets transcribed in full after Stop.
     @Published var liveInterrupted = false
@@ -403,7 +402,6 @@ final class AppState: ObservableObject {
         timer?.invalidate()
         timer = nil
         phase = .finishing
-        isRegenerating = false
         var stopError: Error?
         do {
             audioURL = try await recorder?.stop()
@@ -418,7 +416,24 @@ final class AppState: ObservableObject {
             if !transcriptText.isEmpty && !liveIncomplete {
                 try? transcriptText.write(to: dir.appending(path: "transcript.txt"), atomically: true, encoding: .utf8)
             }
-            updateMeta(in: dir) { $0.duration = self.elapsed }
+            // Slides and a typed name belong to this lecture now, so the next class starts clean even
+            // while these notes are still being made.
+            if slides.isEmpty {
+                try? FileManager.default.removeItem(at: dir.appending(path: "slides.txt"))
+            } else {
+                try? slidesText.write(to: dir.appending(path: "slides.txt"), atomically: true, encoding: .utf8)
+            }
+            let typedName = lectureTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            let recorded = Self.folderFormat.date(from: dir.lastPathComponent) ?? Date()
+            updateMeta(in: dir) {
+                $0.duration = self.elapsed
+                if !typedName.isEmpty {
+                    $0.title = Self.fullTitle(name: typedName, date: recorded)
+                    $0.named = true
+                }
+            }
+            slides = []
+            lectureTitle = ""
             if audioURL == nil { audioURL = dir.appending(path: "mic.m4a") }
         }
         if let stopError { throw stopError }
@@ -469,7 +484,6 @@ final class AppState: ObservableObject {
         let mixed = record.dir.appending(path: "lecture.m4a")
         audioURL = fm.fileExists(atPath: mixed.path) ? mixed : record.dir.appending(path: "mic.m4a")
         sessionDir = record.dir
-        isRegenerating = true
         if openLecture != record.dir { tab = .record }
         phase = retranscribe ? .transcribing : .summarizing
         processTask = Task { await process(forceTranscribe: retranscribe) }
@@ -502,13 +516,10 @@ final class AppState: ObservableObject {
     private func process(forceTranscribe: Bool = false) async {
         guard let audioURL, let dir = sessionDir else { phase = .idle; return }
         let prefs = Prefs.shared
-        let regenerating = isRegenerating
         let savedContext = (try? String(contentsOf: dir.appending(path: "context.txt"), encoding: .utf8)) ?? ""
         let hints = savedContext.trimmingCharacters(in: .whitespacesAndNewlines)
-        let savedSlides = (try? String(contentsOf: dir.appending(path: "slides.txt"), encoding: .utf8)) ?? ""
-        // A fresh recording uses whatever is attached now (slides can change mid-lecture); a past one uses what it saved.
-        let slideText = regenerating ? savedSlides : slidesText
-        let hintTerms = Self.merge(Self.terms(from: savedContext), regenerating ? Self.slideTerms(from: slideText) : slideTerms)
+        let slideText = (try? String(contentsOf: dir.appending(path: "slides.txt"), encoding: .utf8)) ?? ""
+        let hintTerms = Self.merge(Self.terms(from: savedContext), Self.slideTerms(from: slideText))
         do {
             let transcript = try await makeTranscript(audioURL: audioURL, dir: dir, terms: hintTerms, force: forceTranscribe)
             guard !Task.isCancelled else { return }
@@ -521,24 +532,17 @@ final class AppState: ObservableObject {
                                    baseURL: baseURL.isEmpty ? prefs.provider.defaultBaseURL : baseURL,
                                    apiKey: prefs.apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
                                    stylePrompt: prefs.stylePrompt)
-            if slideText.isEmpty {
-                try? FileManager.default.removeItem(at: dir.appending(path: "slides.txt"))
-            } else {
-                try? slideText.write(to: dir.appending(path: "slides.txt"), atomically: true, encoding: .utf8)
-            }
             let recorded = Self.folderFormat.date(from: dir.lastPathComponent) ?? Date()
             let summary = try await Summarizer.summarize(transcript, context: hints, slides: slideText, date: recorded, config: config)
             guard !Task.isCancelled else { return }
             let notes = summary.notes
             try notes.write(to: dir.appending(path: "notes.md"), atomically: true, encoding: .utf8)
-            let typedName = regenerating ? "" : lectureTitle.trimmingCharacters(in: .whitespaces)
-            let title = docTitle(summary: summary, typedName: typedName, dir: dir, regenerating: regenerating)
+            let title = docTitle(summary: summary, dir: dir)
             let html = Markdown.html(notes, title: title)
             try Markdown.html(notes, title: title, styled: true).write(to: dir.appending(path: "notes.html"), atomically: true, encoding: .utf8)
             updateMeta(in: dir) {
                 $0.title = title
                 $0.important = summary.important
-                if !typedName.isEmpty { $0.named = true }
             }
 
             var docURL: URL?
@@ -555,10 +559,6 @@ final class AppState: ObservableObject {
             }
 
             phase = .done(docURL)
-            if !regenerating {
-                lectureTitle = ""
-                slides = []
-            }
             loadHistory()
             if prefs.openDocWhenDone {
                 if let docURL { NSWorkspace.shared.open(docURL) }
@@ -626,11 +626,10 @@ final class AppState: ObservableObject {
     }
 
     /// A name the person gave wins; otherwise the AI's short name, then the notes' heading.
-    private func docTitle(summary: LectureSummary, typedName: String, dir: URL, regenerating: Bool) -> String {
+    private func docTitle(summary: LectureSummary, dir: URL) -> String {
         let recorded = Self.folderFormat.date(from: dir.lastPathComponent) ?? Date()
-        let meta = readMeta(in: dir)
-        let kept = regenerating && meta.named == true ? existingTitle(in: dir) : nil
-        let name = kept ?? (typedName.isEmpty ? nil : typedName) ?? summary.name ?? Markdown.title(of: summary.notes) ?? "Lecture Notes"
+        let kept = readMeta(in: dir).named == true ? existingTitle(in: dir) : nil
+        let name = kept ?? summary.name ?? Markdown.title(of: summary.notes) ?? "Lecture Notes"
         return Self.fullTitle(name: name, date: recorded)
     }
 
