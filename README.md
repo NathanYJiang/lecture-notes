@@ -29,7 +29,7 @@
 
 1. Click the waveform icon in your menu bar and hit **Start recording**.
 2. Watch the transcript appear live. It's transcribed **on your Mac** with Apple's `SpeechAnalyzer`, so audio never leaves your laptop.
-3. Hit **Stop**. The transcript goes to an AI model, which writes clean notes: a one-line summary, sections, bullets, bold key terms, and a glossary.
+3. Hit **Stop**. The transcript goes to an AI model, which writes concise notes: a one-line overview, then sections of bullets with bold key terms, each fact stated once.
 4. Click **Copy notes** and paste into Google Docs, Notion, Apple Notes, or anywhere else. Formatting comes with it. Or connect Google Drive and every lecture becomes a Doc automatically.
 
 ## Features
@@ -39,7 +39,7 @@
 - **Slides for accuracy.** Drop in the lecture's PDF or PowerPoint, no typing needed. The recognizer learns the slides' jargon and titles, and the AI uses the slides to spell terms right and fill in what "this diagram" meant. Works retroactively too: right-click an old lecture → **Add slides & re-transcribe**.
 - **Free by default.** Uses Google's free Gemini tier. You can also bring your own key for Claude, OpenAI, OpenRouter or DeepSeek, run it locally with Ollama, or point it at any OpenAI-compatible endpoint.
 - **Resilient.** It retries when the AI is overloaded and falls back to other free Gemini models if one is retired. Recordings and transcripts are saved before the AI step, so nothing is lost. If something fails, hit **Retry**.
-- **Your style.** The note-taking prompt is editable. The default is minimal: a statement, then bullets with ***bold and italic*** key ideas.
+- **Your style.** The note-taking prompt is editable. The default is concise: bullets under topic headings, each fact once, no recaps.
 - **Mic only, or mic + system audio** for online lectures and Zoom.
 - **Auto-named and flagged.** The AI names each lecture (e.g. *Nov 9, 2026 — Mass Spectrometry Fragmentation*) and flags exams, deadlines, and "this will be on the test" moments with real dates, so "next Friday" becomes *Fri, Nov 13*.
 - **History** of every lecture. Click one to read its notes and transcript right in the menu bar, rename it (its Google Doc gets renamed too), copy, re-generate, or re-transcribe.

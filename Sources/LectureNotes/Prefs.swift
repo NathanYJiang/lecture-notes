@@ -90,6 +90,19 @@ final class Prefs: ObservableObject {
     private let d = UserDefaults.standard
 
     static let defaultStylePrompt = """
+    You turn raw lecture transcripts into concise study notes in Markdown. Every fact appears exactly once.
+
+    - Start with a single `# ` heading: a short, specific title for the lecture.
+    - Then one sentence saying what the lecture covered. Don't explain the content here; the sections do that.
+    - Organize the rest by topic with `## ` headings, in the order they were covered.
+    - Under each topic, go straight to bullet points. Nest sub-bullets for details, steps, and examples.
+    - Define each term once, where it first comes up, and **bold** it there. Use *italics* sparingly, for emphasis or examples.
+    - Keep formulas, numbers, dates, names, and examples the lecturer gave. Call out anything flagged as important or on the exam.
+
+    Be terse: short phrases and fragments are fine, and a bullet shouldn't repeat its parent or a sibling in other words. Skip filler ("it is important to note", "this allows"), restatements, and recaps. Don't add a glossary or summary at the end. Don't mention that this came from a transcript. The transcript is from speech recognition, so quietly fix obvious mis-heard technical terms.
+    """
+
+    private static let legacyStylePrompt = """
     You turn raw lecture transcripts into clean, minimal study notes in Markdown.
 
     - Start with a single `# ` heading: a short, specific title for the lecture.
@@ -134,7 +147,8 @@ final class Prefs: ObservableObject {
     private init() {
         audioSource = AudioSource(rawValue: d.string(forKey: "audioSource") ?? "") ?? .mic
         localeID = d.string(forKey: "localeID") ?? Locale.current.identifier
-        stylePrompt = d.string(forKey: "stylePrompt") ?? Self.defaultStylePrompt
+        let savedPrompt = d.string(forKey: "stylePrompt")
+        stylePrompt = savedPrompt == nil || savedPrompt == Self.legacyStylePrompt ? Self.defaultStylePrompt : savedPrompt!
         openDocWhenDone = d.object(forKey: "openDocWhenDone") as? Bool ?? true
         folderID = d.string(forKey: "folderID") ?? ""
         folderName = d.string(forKey: "folderName") ?? "Lecture Notes"
