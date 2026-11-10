@@ -151,6 +151,8 @@ enum Markdown {
     private static let codeSpan = try! NSRegularExpression(pattern: #"`([^`]+)`"#)
 
     private static let inlineRules: [(NSRegularExpression, String)] = [
+        (#"_\{([^{}]+)\}"#, "<sub>$1</sub>"),
+        (#"\^\{([^{}]+)\}"#, "<sup>$1</sup>"),
         (#"\*\*(.+?)\*\*"#, "<b>$1</b>"),
         (#"__(.+?)__"#, "<b>$1</b>"),
         (#"(?<![\*\w])\*(?!\s)(.+?)(?<!\s)\*(?!\*)"#, "<i>$1</i>"),

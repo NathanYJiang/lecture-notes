@@ -213,11 +213,11 @@ struct NotesText: View {
     @ViewBuilder private func view(for block: Block) -> some View {
         switch block {
         case .heading(1, let text):
-            inline(text).font(.system(size: 17, weight: .bold)).padding(.bottom, 2)
+            inline(text, size: 17).font(.system(size: 17, weight: .bold)).padding(.bottom, 2)
         case .heading(2, let text):
-            inline(text).font(.system(size: 14.5, weight: .semibold)).padding(.top, 8)
+            inline(text, size: 14.5).font(.system(size: 14.5, weight: .semibold)).padding(.top, 8)
         case .heading(_, let text):
-            inline(text).font(.system(size: 13.5, weight: .semibold)).padding(.top, 4)
+            inline(text, size: 13.5).font(.system(size: 13.5, weight: .semibold)).padding(.top, 4)
         case .bullet(let level, let marker, let text):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(marker).foregroundStyle(.secondary)
@@ -238,9 +238,26 @@ struct NotesText: View {
         }
     }
 
-    private func inline(_ text: String) -> Text {
+    private func inline(_ text: String, size: CGFloat = 13) -> Text {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return Text((try? AttributedString(markdown: text, options: options)) ?? AttributedString(text))
+        var attributed = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        for (marker, offset) in [("_{", -0.25), ("^{", 0.4)] {
+            var start = attributed.startIndex
+            while let open = attributed[start...].range(of: marker),
+                  let close = attributed[open.upperBound...].range(of: "}") {
+                if attributed[open].inlinePresentationIntent?.contains(.code) == true {
+                    start = close.upperBound
+                    continue
+                }
+                var script = AttributedString(attributed[open.upperBound..<close.lowerBound])
+                script.font = .system(size: size * 0.72)
+                script.baselineOffset = size * offset
+                let before = attributed.characters.distance(from: attributed.startIndex, to: open.lowerBound)
+                attributed.replaceSubrange(open.lowerBound..<close.upperBound, with: script)
+                start = attributed.characters.index(attributed.startIndex, offsetBy: before + script.characters.count)
+            }
+        }
+        return Text(attributed)
     }
 
     private var blocks: [Block] {

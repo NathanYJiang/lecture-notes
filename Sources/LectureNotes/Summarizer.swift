@@ -60,7 +60,7 @@ enum Summarizer {
         let system = config.stylePrompt + """
 
 
-        Respond with only the Markdown notes. Write math as plain text with Unicode symbols (Θ(log n), n², ≤, ∑), never LaTeX or $...$, because the notes get pasted into apps that don't render it.
+        Respond with only the Markdown notes. Write math as plain text with Unicode symbols (Θ(log n), ≤, ∑, Δ, μ), never LaTeX or $...$. Write every subscript as _{...} and every superscript as ^{...}, always with braces, e.g. x_{i}, μ_{HC}^{top}, G_{ideal}, k_{B}T, 10^{-6}, n^{2}; the app renders these. Don't use Unicode subscript/superscript characters or bare underscores for them.
 
         After the notes, add this block, filled in:
         <lecture-info>

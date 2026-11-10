@@ -99,8 +99,9 @@ enum Snapshot {
         render("lecture-transcript") { state.openLecture = state.history.first?.dir }
         render("quit") { state.showSettings = false; state.phase = .recording; state.confirmingQuit = true }
         render("settings") { state.confirmingQuit = false; state.showSettings = true }
-        if let dir = state.history.first(where: \.hasNotes)?.dir,
-           let notes = try? String(contentsOf: dir.appending(path: "notes.md"), encoding: .utf8) {
+        let sample = ProcessInfo.processInfo.environment["NOTES_SAMPLE"].map { URL(fileURLWithPath: $0) }
+        if let file = sample ?? state.history.first(where: \.hasNotes)?.dir.appending(path: "notes.md"),
+           let notes = try? String(contentsOf: file, encoding: .utf8) {
             let renderer = ImageRenderer(content: NotesText(markdown: notes).padding(14).frame(width: DS.width - 28)
                 .background(Color(nsColor: .windowBackgroundColor)))
             renderer.scale = 2
